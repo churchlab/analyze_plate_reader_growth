@@ -8,15 +8,37 @@ clear;
 close all;
 
 %% load file, set parameters
-filename = 'C:\Users\Marc\Documents\0Harvard\Church Rotation\Church Laboratory Notebook\0rEcoli\Plate Reader Data\2013.06.14.C321.Fix.fitness.compare.top.strains_MOD.txt';
-interval = 5; %minutes
+
+% Windows style filename placeholder.
+% filename = 'C:\Users\Marc\Documents\0Harvard\Church Rotation\Church Laboratory Notebook\0rEcoli\Plate Reader Data\2013.06.14.C321.Fix.fitness.compare.top.strains_MOD.txt';
+
+% Unix style filename placeholder.
+filename = '/home/glebk/Projects/churchlab/fix-recoli-1/experiment_data/2013.06.27.Fix.rE.coli.all.glycerol.replicates_mod.csv'
+
+% Minutes separating each reading.
+interval = 5;
+
+% Sometimes the growth data shows irregular behavior at the beginning.
+% We'll copy the value at the following value to all previous values
+% to avoid getting an erroneous reading.
+% Set this to 0 if you don't want any flattening.
+FLATTEN_FIRST_N_MINUTES = 60;
 
 input = importdata(filename, '\t', 1);
 %access by:  input.colheaders{1,k} and input.data{:,k}
 data = input.data;
 headers = input.colheaders;
 
- 
+% Flatten the data. See comment for FLATTEN_FIRST_N_MINUTES above.
+if FLATTEN_FIRST_N_MINUTES > 0
+  flatten_first_n_observations = FLATTEN_FIRST_N_MINUTES / interval;
+  for well_column = 1:size(data, 2)
+    % Copy the value at the nth position to all previous positions.
+    data(1:flatten_first_n_observations, well_column) = ...
+        data(flatten_first_n_observations, well_column);
+  end
+end
+
 %% plot data
 whos data;
 plot (data);
