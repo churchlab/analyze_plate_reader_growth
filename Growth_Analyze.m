@@ -83,7 +83,7 @@ for i = 1:size(ln_data,2)
             x = (linspace(j, j+delta-1, delta))';
             y = ln_data(j:j+delta-1,i);
             line = polyfit(x,y,1); %returns 1x2 matrix: [slope, y-intercept]
-        
+
             if line(1,1) > maxSlope
                 maxSlope = line(1,1);
                 maxR = corrcoef(x,y);
@@ -92,20 +92,21 @@ for i = 1:size(ln_data,2)
             end
         end
     end
-    
+
     doubleTs(i,1) = log(2)/maxSlope*interval; %save doubling time
     rSqrs(i,1) = (maxR(1,2))^2; %save r-squared
     maxODs(i,1) = max(data(:,i));
     starts(i,1) = maxStart;
     deltas(i,1) = maxDelta;
-    
+
     if rSqrs(i,1) < .99 %output a warning for low r-squared values
         disp(strcat('Warning: low confidence on well --', headers(1,i)));
         figure(3); hold  on; plot(ln_data(:,i));
         %plots ln(OD600) on figure(3) for low r-squared wells
         warnings(i,1) = 1;
     end
-    
+
 end
+
 %% save data to a tab delimited text file: originalfilename_DoubleT.txt
 dlmwrite([filename(1:size(filename,2)-4) '_Analyzed_MJL.txt'],[doubleTs rSqrs maxODs starts deltas warnings], '\t')
