@@ -88,7 +88,12 @@ starts = zeros(size(ln_data,2),1);
 warnings = zeros(size(ln_data,2),1);
 
 for i = 1:size(ln_data,2)
+    % Initialize state variables.
     maxSlope = 0;
+    maxR = 0;
+    maxDelta = 0;
+    maxStart = 0;
+
     for delta = 5:9
         for j = 1:(size(ln_data,1)-delta)
             x = (linspace(j, j+delta-1, delta))';
