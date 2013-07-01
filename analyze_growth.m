@@ -33,25 +33,30 @@ INTERVAL = 5;
 % We'll copy the value at the following value to all previous values
 % to avoid getting an erroneous reading.
 % Set this to 0 if you don't want any flattening.
-FLATTEN_FIRST_N_MINUTES = 60;
+FLATTEN_FIRST_N_MINUTES = 45;
 
 
 %%% Begin processing
 
 input = importdata(FILENAME, '\t', 1);
-%access by:  input.colheaders{1,k} and input.data{:,k}
+
+% Matrix where rows are consecutive time measurements and each column
+% corresponds to a well.
 data = input.data;
+
+% Well names.
 headers = input.colheaders;
 
+% The number of wells.
 num_wells = size(data, 2);
 
 % Flatten the data. See comment for FLATTEN_FIRST_N_MINUTES above.
 if FLATTEN_FIRST_N_MINUTES > 0
   flatten_first_n_observations = FLATTEN_FIRST_N_MINUTES / INTERVAL;
-  for well_column = 1:num_wells
+  for well = 1:num_wells
     % Copy the value at the nth position to all previous positions.
-    data(1:flatten_first_n_observations, well_column) = ...
-        data(flatten_first_n_observations, well_column);
+    data(1:flatten_first_n_observations, well) = ...
+        data(flatten_first_n_observations, well);
   end
 end
 
@@ -73,12 +78,15 @@ xlabel('Time (min/5)');
 ylabel('ln(OD 600)');
 title(strcat('ln(', headers{1,1}, ' - ', headers{1,size(headers,2)}, ')'));
 
+
 %%% Find the linear portion of ln(OD 600). Then do linear regression.
-% This is the tricky part, and the only real change I made to Harris'
-% program.  I'm trying to dynamically find the limits of the linear portion
-% of each ln(OD 600) plot.
-% This does linear regression on various time intervals in the data and
-% then takes the highest slope to use in calculating the doubling time.
+%
+% We dynamically search for the limits of the linear portion of the log-OD
+% plot. We do this by performing a linear regression on a sliding interval
+% window, and keeping track of the window with the greatest slope.
+%
+% This is the main "algorithmic" part of the script and the primary change
+% Jaron Mercer made to Harris Wang's version of this script.
 
 doubleTs = zeros(size(ln_data,2),1);
 rSqrs = zeros(size(ln_data,2),1);
@@ -87,41 +95,52 @@ deltas = zeros(size(ln_data,2),1);
 starts = zeros(size(ln_data,2),1);
 warnings = zeros(size(ln_data,2),1);
 
-for i = 1:size(ln_data,2)
+for well = 1:num_wells
     % Initialize state variables.
     maxSlope = 0;
     maxR = 0;
     maxDelta = 0;
     maxStart = 0;
 
-    for delta = 5:9
-        for j = 1:(size(ln_data,1)-delta)
-            x = (linspace(j, j+delta-1, delta))';
-            y = ln_data(j:j+delta-1,i);
-            line = polyfit(x,y,1); %returns 1x2 matrix: [slope, y-intercept]
+    % Find the greatest slope.
+    intervals_since_greatest = 0;
+    for delta = 5:7
+        for start = 1:(size(ln_data,1)-delta)
+            % We expect the greatest interval early on so no need to go more
+            % than 2 hours past max.
+            if intervals_since_greatest > 24
+                break
+            end
+
+            x = (linspace(start, start + delta - 1, delta))';
+            y = ln_data(start: start + delta - 1, well);
+            line = polyfit(x,y,1); % returns 1x2 matrix: [slope, y-intercept]
 
             if line(1,1) > maxSlope
                 maxSlope = line(1,1);
                 maxR = corrcoef(x,y);
                 maxDelta = delta;
-                maxStart = j;
+                maxStart = start;
+                intervals_since_greatest = 0;
+            else
+                intervals_since_greatest = intervals_since_greatest + 1;
             end
         end
     end
 
-    doubleTs(i,1) = log(2)/maxSlope*INTERVAL; %save doubling time
-    rSqrs(i,1) = (maxR(1,2))^2; %save r-squared
-    maxODs(i,1) = max(data(:,i));
-    starts(i,1) = maxStart;
-    deltas(i,1) = maxDelta;
+    % Save output data.
+    doubleTs(well, 1) = (log(2) / maxSlope) * INTERVAL;
+    rSqrs(well, 1) = (maxR(1, 2)) ^ 2; %save r-squared
+    maxODs(well, 1) = max(data(:, well));
+    starts(well, 1) = maxStart * INTERVAL;
+    deltas(well, 1) = maxDelta;
 
-    if rSqrs(i,1) < .99 %output a warning for low r-squared values
-        disp(strcat('Warning: low confidence on well --', headers(1,i)));
-        figure(3); hold  on; plot(ln_data(:,i));
-        %plots ln(OD600) on figure(3) for low r-squared wells
-        warnings(i,1) = 1;
+    % Output a warning for low r-squared values.
+    if rSqrs(well, 1) < .99
+        disp(strcat('Warning: low confidence on well --', headers(1, well)));
+        figure(3); hold  on; plot(ln_data(:, well));
+        warnings(well, 1) = 1;
     end
-
 end
 
 
@@ -134,7 +153,7 @@ output_data = [headers' num2cell(doubleTs) num2cell(rSqrs) num2cell(maxODs) num2
 fid = fopen(output_filename, 'w');
 
 % Write the header row.
-fprintf(fid, 'id\twell\tdoubling_time\tr_sqrd\tmax_OD\tstart_time\tdelta\twarnings\n');
+fprintf(fid, 'id\twell\tdoubling_time\tr_sqrd\tmax_OD\tstart_time_min\tdelta\twarnings\n');
 
 % Iterate through the well data, writing one row at a time.
 for well = 1:num_wells
