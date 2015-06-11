@@ -1,44 +1,62 @@
-% Script for determining colony doubling time from plate reader growth data.
+function analyze_growth(filename, opt_interval, opt_flatten_first_n_minutes)
+% ANALYZE_GROWTH Compute doubling time given kinetic read time series.
 %
-% Users of the script should update the following variables:
-%     FILENAME: A tab-delimited text file with only the data and a single header
-%         row with well names.
-%     INTERVAL: Minutes between readings.
-%     FLATTEN_FIRST_N_MINUTES: The number of readings to ignore at the
-%         beginning of the script.
+%     Args:
+%         filename: Full path to kinetic read data. Tab-delimited. First row is
+%             well names. Each row is the the value of reads at each time point.
+%         opt_interval: Optional. Interval between reads. Defaults to 5 min.
+%         opt_flatten_first_n_minutes: Optional. Number of samples to flatten
+%             at the beginning of the time series. Helps with issues due to
+%             spurious fluctuations at beginning of read. Defaults to 45 min.
 %
-% The output is written to a new file in the same location as the input
-% a text file, with extension '.analyzed_growth.csv'. This can be imported into
-% Excel as a tab-delimited file.
+%     The output is written to a new file in the same location as the input
+%     a text file, with extension '.analyzed_growth.csv'. This can be imported
+%     into Excel as a tab-delimited file.
 %
-% Written by Jaron Mercer based on original implementation by Harris Wang.
-% Updated June 2013 by Gleb Kuznetsov.
+%     Example usage:
+%         analyze_growth('/home/glebk/Data/2015_06_10_growth_test.txt')
+%
+%
+%     Written by Jaron Mercer based on original implementation by Harris Wang.
+%
+%     Updates by Gleb Kuznetsov:
+%
+%         07/2013: Optimization to ignore reads after max is found and other
+%             cleanups.
+%         06/2015: Convert into function so that users no longer need to edit
+%             source code.
 
-clear;
+% Close any open windows.
 close all;
 
 
-%%% Set inputs.
-
-% Windows style filename placeholder.
-% FILENAME = 'C:\Users\Marc\Documents\0Harvard\Church Rotation\Church Laboratory Notebook\0rEcoli\Plate Reader Data\2013.06.14.C321.Fix.fitness.compare.top.strains_MOD.txt';
-
-% Unix style filename placeholder.
-FILENAME = '/home/glebk/Projects/churchlab/fix-recoli-1/experiment_data/2013.06.27.Fix.rE.coli.all.glycerol.replicates_mod.csv';
+%%% Parse args.
 
 % Minutes separating each reading.
-INTERVAL = 5;
+DEFAULT_INTERVAL = 5;
 
 % Sometimes the growth data shows irregular behavior at the beginning.
 % We'll copy the value at the following value to all previous values
 % to avoid getting an erroneous reading.
 % Set this to 0 if you don't want any flattening.
-FLATTEN_FIRST_N_MINUTES = 45;
+DEFAULT_FLATTERN_FIRST_N_MINUTES = 45;
+
+if exist('opt_interval')
+    interval = opt_interval;
+else
+    interval = DEFAULT_INTERVAL;
+end
+
+if exist('opt_flatten_first_n_minutes')
+    flatten_first_n_minutes= opt_flatten_first_n_minutes;
+else
+    flatten_first_n_minutes= DEFAULT_FLATTERN_FIRST_N_MINUTES;
+end
 
 
 %%% Begin processing
 
-input = importdata(FILENAME, '\t', 1);
+input = importdata(filename, '\t', 1);
 
 % Matrix where rows are consecutive time measurements and each column
 % corresponds to a well.
@@ -50,9 +68,9 @@ headers = input.colheaders;
 % The number of wells.
 num_wells = size(data, 2);
 
-% Flatten the data. See comment for FLATTEN_FIRST_N_MINUTES above.
-if FLATTEN_FIRST_N_MINUTES > 0
-  flatten_first_n_observations = FLATTEN_FIRST_N_MINUTES / INTERVAL;
+% Flatten the data. See comment for flatten_first_n_minutes above.
+if flatten_first_n_minutes > 0
+  flatten_first_n_observations = flatten_first_n_minutes / interval;
   for well = 1:num_wells
     % Copy the value at the nth position to all previous positions.
     data(1:flatten_first_n_observations, well) = ...
@@ -129,10 +147,10 @@ for well = 1:num_wells
     end
 
     % Save output data.
-    doubleTs(well, 1) = (log(2) / maxSlope) * INTERVAL;
+    doubleTs(well, 1) = (log(2) / maxSlope) * interval;
     rSqrs(well, 1) = (maxR(1, 2)) ^ 2; %save r-squared
     maxODs(well, 1) = max(data(:, well));
-    starts(well, 1) = maxStart * INTERVAL;
+    starts(well, 1) = maxStart * interval;
     deltas(well, 1) = maxDelta;
 
     % Output a warning for low r-squared values.
@@ -146,7 +164,7 @@ end
 
 %%% Save data to a tab delimited text file.
 
-output_filename = strcat(FILENAME(1:size(FILENAME, 2) - 4), '.analyzed_growth.csv');
+output_filename = strcat(filename(1:size(filename, 2) - 4), '.analyzed_growth.csv');
 
 output_data = [headers' num2cell(doubleTs) num2cell(rSqrs) num2cell(maxODs) num2cell(starts) num2cell(deltas) num2cell(warnings)];
 
