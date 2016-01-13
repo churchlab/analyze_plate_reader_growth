@@ -174,12 +174,26 @@ for well = 1:num_wells
     end
 
     % Save output data.
-    mus(well, 1) = (maxSlope / interval) * 60; % Added µ to the list of outputs -- Tim W.
-    doubleTs(well, 1) = (log(2) / maxSlope) * interval;
-    rSqrs(well, 1) = (maxR(1, 2)) ^ 2; % save r-squared
-    maxODs(well, 1) = max(data(:, well));
-    starts(well, 1) = maxStart * interval;
-    deltas(well, 1) = maxDelta;
+    % To prevent erroring on blank wells that weren't specified or wells with
+    % insufficient maxODs, we will zero out these wells. -- Tim W.
+    if maxSlope == 0
+        mus(well, 1) = 0;
+        doubleTs(well, 1) = 0;
+        rSqrs(well, 1) = 0; % save r-squared
+        maxODs(well, 1) = 0;
+        starts(well, 1) = 0;
+        deltas(well, 1) = 0;
+        % display warning
+        disp(strcat('Warning: no signal on well --', headers(1, well)));
+        warnings(well, 1) = 1;
+    else
+        mus(well, 1) = (maxSlope / interval) * 60; % Added µ to the list of outputs -- Tim W.
+        doubleTs(well, 1) = (log(2) / maxSlope) * interval;
+        rSqrs(well, 1) = (maxR(1, 2)) ^ 2; % save r-squared
+        maxODs(well, 1) = max(data(:, well));
+        starts(well, 1) = maxStart * interval;
+        deltas(well, 1) = maxDelta;
+    end
 
     % Output a warning for low r-squared values.
     if rSqrs(well, 1) < .990
