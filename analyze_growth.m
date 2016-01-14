@@ -1,4 +1,4 @@
-function analyze_growth(filename, opt_interval)
+function analyze_growth(filename, blank_wells, opt_interval)
 % ANALYZE_GROWTH Compute doubling time given kinetic read time series.
 %
 %     Args:
@@ -52,14 +52,26 @@ else
     interval = DEFAULT_INTERVAL;
 end
 
-% Get user input for blank well positions, i.e. those that are averaged and 
-% asubtracted from the experimental data.
+% Warn user if they have not specified blank wells, as this will lead to incorrect 
+% interpretation of the data.
 %
 % This section was added by Tim W.
 
-prompt = 'Pleae list the column positions of all sample blanks as a row vector.';
-blank_columns = input(prompt);
-blank_columns = sort(blank_columns,'descend');
+if exist('blank_wells')
+    disp(strcat('Blank wells are -- ', blank_wells(:,:)));
+else
+    prompt = strcat('\n   -------------\n   -- WARNING --\n   -------------\n\n' ...
+        , 'No blank wells have been specified.\n' ...
+        , 'Running a growth rate analysis on unblanked data will return erroneous results.\n' ...
+        , '\nContinue (Y/N)? ');
+    should_we_continue = input(prompt);
+    if should_we_continue == 'Y'
+        fprintf('\nOK, continuing...please interpret data with caution.\n')
+        blank_wells = [ 0 ];
+    else
+        return
+    end
+end
 
 %%% Begin processing
 
@@ -72,29 +84,35 @@ data = input_data.data;
 % Well names.
 headers = input_data.colheaders;
 
-% Rows of data.
+% Size of data.
 num_points = size(data,1);
-
-% Separate blanks from data -- Aded by Tim W.
-% The number of blanks.
-num_blanks = size(blank_columns,2);
-
-% Initiate blanks matrix.
-blanks = zeros(num_points,num_blanks);
-
-% Copy blanks to blanks matrix and remove from data and headers.
-for well = 1:num_blanks
-    blanks(:,well) = data(:,blank_columns(well));
-    data(:,blank_columns(well)) = [];
-    headers(:,blank_columns(well)) = [];
-end
-
-% Columns of data with no blanks.
 num_wells = size(data, 2);
 
-% Average blanks matrix and subtract from data.
-blank_avg = mean(blanks.').';
-data = data - blank_avg(:,ones(1,num_wells));
+% Separate blanks from data -- Aded by Tim W.
+if blank_wells(1) > 0
+    % The number of blanks.
+    num_blanks = size(blank_wells,2);
+    
+    % Sort blanks
+    blank_wells = sort(blank_wells,'descend');
+    
+    % Initiate blanks matrix.
+    blank_reads = zeros(num_points,num_blanks);
+
+    % Copy blanks to blanks matrix and remove from data and headers.
+    for well = 1:num_blanks
+        blank_reads(:,well) = data(:,blank_wells(well));
+        data(:,blank_wells(well)) = [];
+        headers(:,blank_wells(well)) = [];
+    end
+
+    % Columns of data with no blanks.
+    num_wells = size(data, 2);
+
+    % Average blanks matrix and subtract from data.
+    blank_avg = mean(blank_reads.').';
+    data = data - blank_avg(:,ones(1,num_wells));
+end
 
 
 %% Plot data.
@@ -179,7 +197,7 @@ for well = 1:num_wells
     if maxSlope == 0
         mus(well, 1) = 0;
         doubleTs(well, 1) = 0;
-        rSqrs(well, 1) = 0; % save r-squared
+        rSqrs(well, 1) = 0;
         maxODs(well, 1) = 0;
         starts(well, 1) = 0;
         deltas(well, 1) = 0;
