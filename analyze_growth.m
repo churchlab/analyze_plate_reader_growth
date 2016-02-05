@@ -4,10 +4,9 @@ function analyze_growth(filename, blank_wells, opt_interval)
 %     Args:
 %         filename: Full path to kinetic read data. Tab-delimited. First row is
 %             well names. Each row is the the value of reads at each time point.
+%         blank_wells: Optional array of wells left blank for calibration.
+%             Provide as integers. E.g. [48, 96] for wells D12 and H12.
 %         opt_interval: Optional. Interval between reads. Defaults to 5 min.
-%         opt_flatten_first_n_minutes: Optional. Number of samples to flatten
-%             at the beginning of the time series. Helps with issues due to
-%             spurious fluctuations at beginning of read. Defaults to 45 min.
 %
 %     The output is written to a new file in the same location as the input
 %     a text file, with extension '.analyzed_growth.csv'. This can be imported
@@ -110,8 +109,11 @@ if blank_wells(1) > 0
     num_wells = size(data, 2);
 
     % Average blanks matrix and subtract from data.
-    blank_avg = mean(blank_reads.').';
-    data = data - blank_avg(:,ones(1,num_wells));
+    blank_avg = mean(mean(blank_reads));
+    data = data - blank_avg;
+
+    % Make sure values are positive.
+    data = max(data, 0.01);
 end
 
 
