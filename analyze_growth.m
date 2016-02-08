@@ -1,11 +1,14 @@
-function analyze_growth(filename, blank_wells, opt_interval)
+function analyze_growth(filename, opt_blank_wells, opt_blank_value, ...
+        opt_interval)
 % ANALYZE_GROWTH Compute doubling time given kinetic read time series.
 %
 %     Args:
 %         filename: Full path to kinetic read data. Tab-delimited. First row is
 %             well names. Each row is the the value of reads at each time point.
-%         blank_wells: Optional array of wells left blank for calibration.
+%         opt_blank_wells: Optional array of wells left blank for calibration.
 %             Provide as integers. E.g. [48, 96] for wells D12 and H12.
+%         opt_blank_value: Optional value of blank read. If provided,
+%             opt_blank_wells is ignored.
 %         opt_interval: Optional. Interval between reads. Defaults to 5 min.
 %
 %     The output is written to a new file in the same location as the input
@@ -14,7 +17,6 @@ function analyze_growth(filename, blank_wells, opt_interval)
 %
 %     Example usage:
 %         analyze_growth('/home/glebk/Data/2015_06_10_growth_test.txt')
-%
 %
 %     Written by Jaron Mercer based on original implementation by Harris Wang.
 %
@@ -39,41 +41,7 @@ function analyze_growth(filename, blank_wells, opt_interval)
 % Close any open windows.
 close all;
 
-
-%%% Parse args.
-
-% Minutes separating each reading.
-DEFAULT_INTERVAL = 5;
-
-if exist('opt_interval')
-    interval = opt_interval;
-else
-    interval = DEFAULT_INTERVAL;
-end
-
-% Warn user if they have not specified blank wells, as this will lead to incorrect 
-% interpretation of the data.
-%
-% This section was added by Tim W.
-
-if exist('blank_wells')
-    disp(strcat('Blank wells are -- ', blank_wells(:,:)));
-else
-    prompt = strcat('\n   -------------\n   -- WARNING --\n   -------------\n\n' ...
-        , 'No blank wells have been specified.\n' ...
-        , 'Running a growth rate analysis on unblanked data will return erroneous results.\n' ...
-        , '\nContinue (Y/N)?\n');
-    should_we_continue = upper(input(prompt, 's'));
-    if should_we_continue == 'Y'
-        fprintf('\nOK, continuing...please interpret data with caution.\n')
-        blank_wells = [ 0 ];
-    else
-        return;
-    end
-end
-
-%%% Begin processing
-
+% Initial data import.
 input_data = importdata(filename, '\t', 1);
 
 % Matrix where rows are consecutive time measurements and each column
@@ -84,36 +52,72 @@ data = input_data.data;
 headers = input_data.colheaders;
 
 % Size of data.
-num_points = size(data,1);
+num_points = size(data, 1);
 num_wells = size(data, 2);
 
-% Separate blanks from data -- Aded by Tim W.
-if blank_wells(1) > 0
+
+% Determine blank measurement. Default 0.
+%
+% Warn user if they have not specified blank wells, as this will lead to
+% incorrect absolute doubling times.
+%
+% Blank reads are removed from data.
+
+% Default blank value.
+blank_avg = 0.0;
+
+if exist('opt_blank_value', 'var')
+    blank_avg = opt_blank_value;
+elseif (exist('opt_blank_wells', 'var') & length(opt_blank_wells) > 0 & ...
+        opt_blank_wells(1) > 0)
     % The number of blanks.
-    num_blanks = size(blank_wells,2);
-    
-    % Sort blanks
-    blank_wells = sort(blank_wells,'descend');
-    
+    num_blanks = size(opt_blank_wells, 2);
+
+    % Sort blanks so that data can be removed from matrix.
+    opt_blank_wells = sort(opt_blank_wells, 'descend');
+
     % Initiate blanks matrix.
     blank_reads = zeros(num_points,num_blanks);
 
     % Copy blanks to blanks matrix and remove from data and headers.
     for well = 1:num_blanks
-        blank_reads(:,well) = data(:,blank_wells(well));
-        data(:,blank_wells(well)) = [];
-        headers(:,blank_wells(well)) = [];
+        blank_reads(:, well) = data(:, opt_blank_wells(well));
+        data(:, opt_blank_wells(well)) = [];
+        headers(:, opt_blank_wells(well)) = [];
     end
 
     % Columns of data with no blanks.
     num_wells = size(data, 2);
 
-    % Average blanks matrix and subtract from data.
+    % Average blanks matrix.
     blank_avg = mean(mean(blank_reads));
-    data = data - blank_avg;
+else
+    prompt = strcat(...
+        '\n   -------------\n   -- WARNING --\n   -------------\n\n' ...
+        , 'No blank wells have been specified.\n' ...
+        , 'Running a growth rate analysis on unblanked data will return erroneous results.\n' ...
+        , '\nContinue (Y/N)?\n');
+    should_we_continue = upper(input(prompt, 's'));
+    if should_we_continue == 'Y'
+        fprintf('\nOK, continuing...please interpret data with caution.\n')
+    else
+        return;  % Exit.
+    end
+end
 
-    % Make sure values are positive.
-    data = max(data, 0.01);
+% Subtract blank (might be 0, in which case this is NO-OP).
+data = data - blank_avg;
+
+% Make sure values are positive.
+data = max(data, 0.01);
+
+
+% Set interval between reads. Default 5 min.
+DEFAULT_INTERVAL = 5;
+if exist('opt_interval', 'var')
+    interval = opt_interval;
+else
+    interval = DEFAULT_INTERVAL;
 end
 
 
@@ -126,7 +130,7 @@ title(strcat(headers{1,1}, ' - ', headers{1,size(headers,2)}));
 
 
 %% Plot log of data.
-ln_data = log (data);
+ln_data = log(data);
 ln_data(isinf(ln_data)) = NaN;
 ln_data = real(ln_data);
 figure (2); plot(ln_data);
@@ -161,24 +165,28 @@ for well = 1:num_wells
 
     % Find the greatest slope.
     intervals_since_greatest = 0;
-    % Look at 12 data points (60 minutes) -- Changed by Tim W. from 5 to 7 
+
+    % Look at 12 data points (60 minutes) -- Changed by Tim W. from 5 to 7
     % data points to reduce noise
     for delta = 12
-        for start = 1:(size(ln_data,1)-delta)
+        for start = 1:(size(ln_data,1) - delta)
             % We expect the greatest interval early on so no need to go more
-            % than 2 hours past max. 
-            % only break if the correlation is good, otherwise search exhausively
+            % than 2 hours past max.
+            % Only break if the correlation is good, else search exhausively.
             %  -- Condition added by Tim W.
             if intervals_since_greatest > 24 & maxR > .995
                 break
             end
+
             % Only bother fitting if the starting interval absorbance is between
-            % 0.02 and 0.7, or within the plate-reader sweet-spot -- Condition added
-            % by Tim W.
+            % 0.02 and 0.7, or within the plate-reader sweet-spot
+            % -- Condition added by Tim W.
             if data(start,well) > 0.05 & data(start,well) < 0.7
                 x = (linspace(start, start + delta - 1, delta))';
                 y = ln_data(start: start + delta - 1, well);
-                line = polyfit(x,y,1); % returns 1x2 matrix: [slope, y-intercept]
+
+                % returns 1x2 matrix: [slope, y-intercept]
+                line = polyfit(x,y,1);
 
                 if line(1,1) > maxSlope
                     maxSlope = line(1,1);
@@ -231,11 +239,13 @@ output_filename = strcat(filename(1:size(filename, 2) - 4), '.analyzed_growth.cs
 fid = fopen(output_filename, 'w');
 
 % Write the header row.
-fprintf(fid, 'id\twell\tµ_hourly\tdoubling_time_min\tr_sqrd\tmax_OD\tstart_time_min\tdelta\twarnings\n');
+fprintf(fid, 'id,well,mu_hourly,doubling_time_min,r_sqrd,max_OD,start_time_min,delta,warnings\n');
 
 % Iterate through the well data, writing one row at a time.
 for well = 1:num_wells
-  fprintf(fid, '%d\t%s\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n', well, headers{well}, mus(well), doubleTs(well), rSqrs(well), maxODs(well), starts(well), deltas(well), warnings(well));
+    fprintf(fid, '%d,%s,%f,%f,%f,%f,%f,%f,%f\n', ...
+            well, headers{well}, mus(well), doubleTs(well), rSqrs(well), ...
+            maxODs(well), starts(well), deltas(well), warnings(well));
 end
 
 fclose(fid);
