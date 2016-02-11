@@ -1,5 +1,6 @@
 function analyze_growth(filename, opt_blank_wells, opt_blank_value, ...
-        opt_interval, opt_mid_log_interval, opt_hide_plots)
+        opt_interval, opt_mid_log_interval, opt_hide_plots, ...
+        opt_output_override)
 % ANALYZE_GROWTH Compute doubling time given kinetic read time series.
 %
 %     Args:
@@ -14,6 +15,7 @@ function analyze_growth(filename, opt_blank_wells, opt_blank_value, ...
 %         opt_mid_log_interval: Optional. Size of window, in minutes, for which
 %             we measure linear growth. Default 60 minutes.
 %         opt_hide_plots: Optional. Boolean. If true, hide plots.
+%         opt_output_override: Optional. Override the name of the output file.
 %
 %     The output is written to a new file in the same location as the input
 %     a text file, with extension '.analyzed_growth.csv'. This can be imported
@@ -254,9 +256,13 @@ for well = 1:num_wells
 end
 
 
-%%% Save data to a tab delimited text file.
+%%% Save data to csv.
 
-output_filename = strcat(filename(1:size(filename, 2) - 4), '.analyzed_growth.csv');
+if exist('opt_output_override', 'var')
+    output_filename = opt_output_override;
+else
+    output_filename = strcat(filename(1:size(filename, 2) - 4), '.analyzed_growth.csv');
+end
 
 fid = fopen(output_filename, 'w');
 
