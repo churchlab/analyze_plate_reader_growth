@@ -1,5 +1,5 @@
 function analyze_growth(filename, opt_blank_wells, opt_blank_value, ...
-        opt_interval)
+        opt_interval, opt_mid_log_interval, opt_hide_plots)
 % ANALYZE_GROWTH Compute doubling time given kinetic read time series.
 %
 %     Args:
@@ -9,7 +9,11 @@ function analyze_growth(filename, opt_blank_wells, opt_blank_value, ...
 %             Provide as integers. E.g. [48, 96] for wells D12 and H12.
 %         opt_blank_value: Optional value of blank read. If provided,
 %             opt_blank_wells is ignored.
-%         opt_interval: Optional. Interval between reads. Defaults to 5 min.
+%         opt_interval: Optional. Interval, in minutes, between reads.
+%             Default 5 min.
+%         opt_mid_log_interval: Optional. Size of window, in minutes, for which
+%             we measure linear growth. Default 60 minutes.
+%         opt_hide_plots: Optional. Boolean. If true, hide plots.
 %
 %     The output is written to a new file in the same location as the input
 %     a text file, with extension '.analyzed_growth.csv'. This can be imported
@@ -18,28 +22,21 @@ function analyze_growth(filename, opt_blank_wells, opt_blank_value, ...
 %     Example usage:
 %         analyze_growth('/home/glebk/Data/2015_06_10_growth_test.txt')
 %
-%     Written by Jaron Mercer based on original implementation by Harris Wang.
-%
-%     Updates by Gleb Kuznetsov:
-%
-%         07/2013: Optimization to ignore reads after max is found and other
-%             cleanups.
-%         06/2015: Convert into function so that users no longer need to edit
-%             source code.
-%
-%     Updates by Tim Wannier:
-%
-%         01/2016: 
-%             - Expanded search window (or delta) to 12 data points for
-%               more reliable data.  
-%             - Added functionality to blank data with wells that have media 
-%               but no actively growing culture.  
-%             - Removed arbitrary data flattening and replaced with an argument
-%               to keep scanning the linear fit window until a minimum
-%               R-squared is reached.
+%     Authors:
+%         Jaron Mercer - ported to Matlab
+%         Harris Wang - original draft
+%         Gleb Kuznetsov (kuznetsov@g.harvard.edu) - primary maintainer
+%         Tim Wannier
 
 % Close any open windows.
 close all;
+
+% Default interval, in minutes, between measurements in the input data.
+DEFAULT_INTERVAL = 5;
+
+% Default window, in minutes, when we measure log-linear growth.
+DEFAULT_MID_LOG_INTERVAL = 60;
+
 
 % Initial data import.
 input_data = importdata(filename, '\t', 1);
@@ -66,7 +63,7 @@ num_wells = size(data, 2);
 % Default blank value.
 blank_avg = 0.0;
 
-if exist('opt_blank_value', 'var')
+if exist('opt_blank_value', 'var') & opt_blank_value > 0
     blank_avg = opt_blank_value;
 elseif (exist('opt_blank_wells', 'var') & length(opt_blank_wells) > 0 & ...
         opt_blank_wells(1) > 0)
@@ -112,31 +109,54 @@ data = data - blank_avg;
 data = max(data, 0.01);
 
 
-% Set interval between reads. Default 5 min.
-DEFAULT_INTERVAL = 5;
+% Set interval between reads.
+interval = DEFAULT_INTERVAL;
 if exist('opt_interval', 'var')
     interval = opt_interval;
-else
-    interval = DEFAULT_INTERVAL;
 end
 
 
-%% Plot data.
+% Set delta (number of timepoints) based on mid-log window and interval
+% between measurements.
+mid_log_interval = DEFAULT_MID_LOG_INTERVAL;
+if exist('opt_mid_log_interval', 'var')
+    mid_log_interval = opt_mid_log_interval;
+end
+delta = round(mid_log_interval / interval);
+
+
+% Determine whether to show plots or not.
+show_plots = true;
+if exist('opt_hide_plots', 'var') & opt_hide_plots
+    show_plots = false;
+end
+
+
+% Show data dimensions.
 whos data;
-plot(data);
-xlabel('Time (min/5)');
-ylabel('OD 600');
-title(strcat(headers{1,1}, ' - ', headers{1,size(headers,2)}));
+
+% Plot data.
+if show_plots
+    plot(data);
+    title(strcat(headers{1,1}, ' - ', headers{1,size(headers,2)}));
+    xlabel('Time (min/5)');
+    ylabel('OD 600');
+end
 
 
-%% Plot log of data.
+% We fit the natural log of the data.
 ln_data = log(data);
 ln_data(isinf(ln_data)) = NaN;
 ln_data = real(ln_data);
-figure (2); plot(ln_data);
-xlabel('Time (min/5)');
-ylabel('ln(OD 600)');
-title(strcat('ln(', headers{1,1}, ' - ', headers{1,size(headers,2)}, ')'));
+
+% Plot log of data.
+if show_plots
+    figure(2);
+    plot(ln_data);
+    xlabel('Time (min/5)');
+    ylabel('ln(OD 600)');
+    title(strcat('ln(', headers{1,1}, ' - ', headers{1,size(headers,2)}, ')'));
+end
 
 
 %%% Find the linear portion of ln(OD 600). Then do linear regression.
@@ -153,50 +173,49 @@ doubleTs = zeros(size(ln_data,2),1);
 rSqrs = zeros(size(ln_data,2),1);
 maxODs = zeros(size(ln_data,2),1);
 deltas = zeros(size(ln_data,2),1);
-starts = zeros(size(ln_data,2),1);
+window_starts = zeros(size(ln_data,2),1);
 warnings = zeros(size(ln_data,2),1);
 
 for well = 1:num_wells
     % Initialize state variables.
     maxSlope = 0;
-    maxR = 0;
+    maxRsquared = 0;
     maxDelta = 0;
     maxStart = 0;
 
     % Find the greatest slope.
     intervals_since_greatest = 0;
 
-    % Look at 12 data points (60 minutes) -- Changed by Tim W. from 5 to 7
-    % data points to reduce noise
-    for delta = 12
-        for start = 1:(size(ln_data,1) - delta)
-            % We expect the greatest interval early on so no need to go more
-            % than 2 hours past max.
-            % Only break if the correlation is good, else search exhausively.
-            %  -- Condition added by Tim W.
-            if intervals_since_greatest > 24 & maxR > .995
-                break
-            end
+    for window_start = 1:(size(ln_data, 1) - delta)
+        % We expect the greatest interval early on so no need to go more
+        % than 2 hours past max.
+        % Only break if the correlation is good, else search exhausively.
+        %  -- Condition added by Tim W.
+        if intervals_since_greatest > 24 & maxRsquared > .995
+            break
+        end
 
-            % Only bother fitting if the starting interval absorbance is between
-            % 0.02 and 0.7, or within the plate-reader sweet-spot
-            % -- Condition added by Tim W.
-            if data(start,well) > 0.05 & data(start,well) < 0.7
-                x = (linspace(start, start + delta - 1, delta))';
-                y = ln_data(start: start + delta - 1, well);
+        % Only bother fitting if the window_starting interval absorbance is between
+        % 0.05 and 0.7, or within the plate-reader sweet-spot
+        % -- Condition added by Tim W.
+        if data(window_start, well) > 0.05 & data(window_start, well) < 0.7
+            x = (linspace(window_start, window_start + delta - 1, delta))';
+            y = ln_data(window_start: window_start + delta - 1, well);
 
-                % returns 1x2 matrix: [slope, y-intercept]
-                line = polyfit(x,y,1);
+            % returns 1x2 matrix: [slope, y-intercept]
+            line = polyfit(x,y,1);
 
-                if line(1,1) > maxSlope
-                    maxSlope = line(1,1);
-                    maxR = corrcoef(x,y);
-                    maxDelta = delta;
-                    maxStart = start;
-                    intervals_since_greatest = 0;
-                else
-                    intervals_since_greatest = intervals_since_greatest + 1;
-                end
+            corrcoefMatrix = corrcoef(x,y);
+            % Use either of the off-axis values to calculate R-squared.
+            rSquared = corrcoefMatrix(1, 2) ^ 2;
+            if line(1, 1) > maxSlope & rSquared > 0.95
+                maxSlope = line(1, 1);
+                maxRsquared = rSquared;
+                maxDelta = delta;
+                maxStart = window_start;
+                intervals_since_greatest = 0;
+            else
+                intervals_since_greatest = intervals_since_greatest + 1;
             end
         end
     end
@@ -209,24 +228,27 @@ for well = 1:num_wells
         doubleTs(well, 1) = 0;
         rSqrs(well, 1) = 0;
         maxODs(well, 1) = 0;
-        starts(well, 1) = 0;
+        window_starts(well, 1) = 0;
         deltas(well, 1) = 0;
         % display warning
         disp(strcat('Warning: no signal on well --', headers(1, well)));
         warnings(well, 1) = 1;
     else
-        mus(well, 1) = (maxSlope / interval) * 60; % Added µ to the list of outputs -- Tim W.
+        % Added µ to the list of outputs -- Tim W.
+        mus(well, 1) = (maxSlope / interval) * 60;
         doubleTs(well, 1) = (log(2) / maxSlope) * interval;
-        rSqrs(well, 1) = (maxR(1, 2)) ^ 2; % save r-squared
+        rSqrs(well, 1) = maxRsquared; % save r-squared
         maxODs(well, 1) = max(data(:, well));
-        starts(well, 1) = maxStart * interval;
+        window_starts(well, 1) = maxStart * interval;
         deltas(well, 1) = maxDelta;
     end
 
     % Output a warning for low r-squared values.
-    if rSqrs(well, 1) < .990
+    if rSqrs(well, 1) < .95
         disp(strcat('Warning: low confidence on well --', headers(1, well)));
-        figure(3); hold  on; plot(ln_data(:, well));
+        if show_plots
+            figure(3); hold  on; plot(ln_data(:, well));
+        end
         warnings(well, 1) = 1;
     end
 end
@@ -239,13 +261,13 @@ output_filename = strcat(filename(1:size(filename, 2) - 4), '.analyzed_growth.cs
 fid = fopen(output_filename, 'w');
 
 % Write the header row.
-fprintf(fid, 'id,well,mu_hourly,doubling_time_min,r_sqrd,max_OD,start_time_min,delta,warnings\n');
+fprintf(fid, 'id,well,mu_hourly,doubling_time_min,r_sqrd,max_OD,window_start_time_min,delta,warnings\n');
 
 % Iterate through the well data, writing one row at a time.
 for well = 1:num_wells
     fprintf(fid, '%d,%s,%f,%f,%f,%f,%f,%f,%f\n', ...
             well, headers{well}, mus(well), doubleTs(well), rSqrs(well), ...
-            maxODs(well), starts(well), deltas(well), warnings(well));
+            maxODs(well), window_starts(well), deltas(well), warnings(well));
 end
 
 fclose(fid);
