@@ -1,38 +1,41 @@
 ANALYZE_GROWTH Compute doubling time given kinetic read time series.
 
-     Args:
-         filename: Full path to kinetic read data. Tab-delimited. First row is
-             well names. Each row is the the value of reads at each time point.
-         opt_interval: Optional. Interval between reads. Defaults to 5 min.
-         opt_flatten_first_n_minutes: Optional. Number of samples to flatten
-             at the beginning of the time series. Helps with issues due to
-             spurious fluctuations at beginning of read. Defaults to 45 min.
+    Args:
+        filename: Full path to kinetic read data. Tab-delimited. First row is
+            well names. Each row is the the value of reads at each time point.
+        opt_blank_wells: Optional array of wells left blank for calibration.
+            Provide as integers. E.g. [48, 96] for wells D12 and H12.
+        opt_blank_value: Optional value of blank read. If provided,
+            opt_blank_wells is ignored.
+        opt_interval: Optional. Interval, in minutes, between reads.
+            Default 5 min.
+        opt_mid_log_interval: Optional. Size of window, in minutes, for which
+            we measure linear growth. Default 60 minutes.
+        opt_hide_plots: Optional. Boolean. If true, hide plots.
+        opt_output_override: Optional. Override the name of the output file.
 
-     The output is written to a new file in the same location as the input
-     a text file, with extension '.analyzed_growth.csv'. This can be imported
-     into Excel as a tab-delimited file.
+    The output is written to a new file in the same location as the input
+    a text file, with extension '.analyzed_growth.csv'. This can be imported
+    into Excel as a tab-delimited file.
 
-     Example usage:
-         analyze_growth('/home/glebk/Data/2015_06_10_growth_test.txt')
+    Example usage:
 
+        analyze_growth('/home/glebk/Data/2015_06_10_growth_test.txt')
 
-     Written by Jaron Mercer based on original implementation by Harris Wang.
+    Blank wells may be provided to be sourced as the average blank read. For example, if well H12 (96th well) is blank:
 
-     Updates by Gleb Kuznetsov:
+        analyze_growth('/home/glebk/Data/2015_06_10_growth_test.txt', [96])
 
-         07/2013: Optimization to ignore reads after max is found and other
-             cleanups.
-         06/2015: Convert into function so that users no longer need to edit
-             source code.
+    Alternatively, one can provide a global blank value to adjust all reads by:
 
-     Updates by Tim Wannier:
+        analyze_growth('/home/glebk/Data/2015_06_10_growth_test.txt', [], 0.09)
 
-         01/2016: 
-             - Expanded search window (or delta) to 12 data points for
-               more reliable data.  
-             - Added functionality to blank data with wells that have media 
-               but no actively growing culture.  Data must be input as a row
-               vector of indeces where A1 = 1, A12 = 12, B1 = 13, etc.
-             - Removed arbitrary data flattening and replaced with an argument
-               to keep scanning the linear fit window until a minimum
-               R-squared is reached.
+    Note for using optional arguments: User must provide values for all arguments up to the optional argument you would like to use. For example, to set opt_mid_log_interval to 30 min, the command is:
+
+        analyze_growth('/home/glebk/Data/2015_06_10_growth_test.txt', [], 0, 5, 30)
+
+    Authors:
+        Jaron Mercer - ported to Matlab
+        Harris Wang - original draft
+        Gleb Kuznetsov (kuznetsov@g.harvard.edu) - primary maintainer
+        Tim Wannier
