@@ -13,7 +13,7 @@ function analyze_growth(filename, opt_blank_wells, opt_blank_value, ...
 %         opt_interval: Optional. Interval, in minutes, between reads.
 %             Default 5 min.
 %         opt_mid_log_interval: Optional. Size of window, in minutes, for which
-%             we measure linear growth. Default 60 minutes.
+%             we measure linear growth. Default 40 minutes.
 %         opt_hide_plots: Optional. Boolean. If true, hide plots.
 %         opt_output_override: Optional. Override the name of the output file.
 
@@ -54,7 +54,7 @@ close all;
 DEFAULT_INTERVAL = 5;
 
 % Default window, in minutes, when we measure log-linear growth.
-DEFAULT_MID_LOG_INTERVAL = 60;
+DEFAULT_MID_LOG_INTERVAL = 40;
 
 
 % Initial data import.

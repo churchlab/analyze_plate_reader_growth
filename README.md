@@ -10,7 +10,7 @@ ANALYZE_GROWTH Compute doubling time given kinetic read time series.
         opt_interval: Optional. Interval, in minutes, between reads.
             Default 5 min.
         opt_mid_log_interval: Optional. Size of window, in minutes, for which
-            we measure linear growth. Default 60 minutes.
+            we measure linear growth. Default 40 minutes.
         opt_hide_plots: Optional. Boolean. If true, hide plots.
         opt_output_override: Optional. Override the name of the output file.
 
