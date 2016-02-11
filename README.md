@@ -22,7 +22,8 @@ ANALYZE_GROWTH Compute doubling time given kinetic read time series.
 
         analyze_growth('/home/glebk/Data/2015_06_10_growth_test.txt')
 
-    Blank wells may be provided to be sourced as the average blank read. For example, if well H12 (96th well) is blank:
+    Blank wells may be provided to be sourced as the average blank read.
+    For example, if well H12 (96th well) is blank:
 
         analyze_growth('/home/glebk/Data/2015_06_10_growth_test.txt', [96])
 
@@ -30,7 +31,9 @@ ANALYZE_GROWTH Compute doubling time given kinetic read time series.
 
         analyze_growth('/home/glebk/Data/2015_06_10_growth_test.txt', [], 0.09)
 
-    Note for using optional arguments: User must provide values for all arguments up to the optional argument you would like to use. For example, to set opt_mid_log_interval to 30 min, the command is:
+    Note for using optional arguments: User must provide values for all
+    arguments up to the optional argument you would like to use.
+    For example, to set opt_mid_log_interval to 30 min, the command is:
 
         analyze_growth('/home/glebk/Data/2015_06_10_growth_test.txt', [], 0, 5, 30)
 
