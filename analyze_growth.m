@@ -124,8 +124,8 @@ end
 % Subtract blank (might be 0, in which case this is NO-OP).
 data = data - blank_avg;
 
-% Make sure values are positive.
-data = max(data, 0.01);
+% Make sure values are positive following blanking.
+data = max(data, 0.001);
 
 
 % Set interval between reads.
@@ -193,6 +193,7 @@ rSqrs = zeros(size(ln_data,2),1);
 maxODs = zeros(size(ln_data,2),1);
 deltas = zeros(size(ln_data,2),1);
 window_starts = zeros(size(ln_data,2),1);
+maxSlopeODs = zeros(size(ln_data,2),1);
 warnings = zeros(size(ln_data,2),1);
 
 for well = 1:num_wells
@@ -201,6 +202,7 @@ for well = 1:num_wells
     maxRsquared = 0;
     maxDelta = 0;
     maxStart = 0;
+    maxSlopeOD = 0;
 
     % Find the greatest slope.
     intervals_since_greatest = 0;
@@ -214,10 +216,8 @@ for well = 1:num_wells
             break
         end
 
-        % Only bother fitting if the window_starting interval absorbance is between
-        % 0.05 and 0.7, or within the plate-reader sweet-spot
-        % -- Condition added by Tim W.
-        if data(window_start, well) > 0.05 & data(window_start, well) < 0.7
+        % Only bother fitting if the interval OD is between 0.1 and 0.7.
+        if data(window_start, well) > 0.1 & data(window_start, well) < 0.7
             x = (linspace(window_start, window_start + delta - 1, delta))';
             y = ln_data(window_start: window_start + delta - 1, well);
 
@@ -232,6 +232,7 @@ for well = 1:num_wells
                 maxRsquared = rSquared;
                 maxDelta = delta;
                 maxStart = window_start;
+                maxSlopeOD = data(window_start + delta / 2, well);
                 intervals_since_greatest = 0;
             else
                 intervals_since_greatest = intervals_since_greatest + 1;
@@ -249,6 +250,7 @@ for well = 1:num_wells
         maxODs(well, 1) = 0;
         window_starts(well, 1) = 0;
         deltas(well, 1) = 0;
+        maxSlopeODs(well, 1) = 0;
         % display warning
         disp(strcat('Warning: no signal on well --', headers(1, well)));
         warnings(well, 1) = 1;
@@ -260,6 +262,7 @@ for well = 1:num_wells
         maxODs(well, 1) = max(data(:, well));
         window_starts(well, 1) = maxStart * interval;
         deltas(well, 1) = maxDelta;
+        maxSlopeODs(well, 1) = maxSlopeOD;
     end
 
     % Output a warning for low r-squared values.
@@ -284,13 +287,14 @@ end
 fid = fopen(output_filename, 'w');
 
 % Write the header row.
-fprintf(fid, 'id,well,mu_hourly,doubling_time_min,r_sqrd,max_OD,window_start_time_min,delta,warnings\n');
+fprintf(fid, 'id,well,mu_hourly,doubling_time_min,r_sqrd,max_OD,window_start_time_min,delta,max_slope_od,warnings\n');
 
 % Iterate through the well data, writing one row at a time.
 for well = 1:num_wells
-    fprintf(fid, '%d,%s,%f,%f,%f,%f,%f,%f,%f\n', ...
+    fprintf(fid, '%d,%s,%f,%f,%f,%f,%f,%f,%f,%f\n', ...
             well, headers{well}, mus(well), doubleTs(well), rSqrs(well), ...
-            maxODs(well), window_starts(well), deltas(well), warnings(well));
+            maxODs(well), window_starts(well), deltas(well), ...
+            maxSlopeODs(well), warnings(well));
 end
 
 fclose(fid);
