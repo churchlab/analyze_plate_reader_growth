@@ -216,8 +216,8 @@ for well = 1:num_wells
             break
         end
 
-        % Only bother fitting if the interval OD is between 0.1 and 0.7.
-        if data(window_start, well) > 0.1 & data(window_start, well) < 0.7
+        % Only bother fitting if the interval OD is between 0.2 and 0.7.
+        if data(window_start, well) > 0.2 & data(window_start, well) < 0.7
             x = (linspace(window_start, window_start + delta - 1, delta))';
             y = ln_data(window_start: window_start + delta - 1, well);
 
