@@ -111,14 +111,8 @@ else
     prompt = strcat(...
         '\n   -------------\n   -- WARNING --\n   -------------\n\n' ...
         , 'No blank wells have been specified.\n' ...
-        , 'Running a growth rate analysis on unblanked data will return erroneous results.\n' ...
-        , '\nContinue (Y/N)?\n');
-    should_we_continue = upper(input(prompt, 's'));
-    if should_we_continue == 'Y'
-        fprintf('\nOK, continuing...please interpret data with caution.\n')
-    else
-        return;  % Exit.
-    end
+        , 'Running a growth rate analysis on unblanked data will return erroneous results.\n');
+    fprintf(prompt);
 end
 
 % Subtract blank (might be 0, in which case this is NO-OP).
